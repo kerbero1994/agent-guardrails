@@ -16,7 +16,15 @@ export PATH="$TMP/bin:$PATH" HEAVY_LOCK="$TMP/heavy.lock" HEAVY_LOCK_WAIT=1 FAKE
 unset HEAVY_LOCK_HELD
 
 pass=0; fail=0
-run() { OUT="$(env "$@" 2>&1)"; RC=$?; }  # run [VAR=val...] cmd... -> RC, OUT
+# run [VAR=val...] cmd... -> RC, OUT. Each case gets 5 s, then its whole process
+# group is killed and RC=hung: a guard stuck on the lock fails the case instead
+# of hanging the suite. (perl forks and waits; a plain alarm is ignored by sh.)
+run() {
+  OUT="$(perl -e '$p = fork // die; if (!$p) { setpgrp; exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", -$p; print "still waiting after 5 s\n"; exit 124 };
+    alarm 5; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' env "$@" 2>&1)"
+  RC=$?; [ "$RC" = 124 ] && RC=hung
+}
 check() { # desc want_rc [must_contain] [must_not_contain]
   local ok=1
   [ "$RC" = "$2" ] || ok=0
@@ -39,11 +47,7 @@ check "flag already set still measures" 75 "" RAN_IT
 BUSY="$TMP/busy.lock"
 lockf -k "$BUSY" sleep 6 & holder=$!
 for _ in $(seq 1 25); do lockf -k -t 0 "$BUSY" true 2>/dev/null || break; sleep 0.2; done
-( HEAVY_LOCK="$BUSY" sh "$GUARD" echo RAN_IT > "$TMP/busy.out" 2>&1; echo $? > "$TMP/busy.rc" ) &
-for _ in $(seq 1 25); do [ -f "$TMP/busy.rc" ] && break; sleep 0.2; done
-if [ -f "$TMP/busy.rc" ]; then RC="$(cat "$TMP/busy.rc")"; OUT="$(cat "$TMP/busy.out")"
-else RC=hung; OUT="still waiting after 5 s"; fi
-check "busy lock fails fast" 75 "" RAN_IT
+run HEAVY_LOCK="$BUSY" sh "$GUARD" echo RAN_IT; check "busy lock fails fast" 75 "" RAN_IT
 kill "$holder" 2>/dev/null
 
 # --- row 3: no lock inside a lock ---

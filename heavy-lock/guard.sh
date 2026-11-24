@@ -4,9 +4,10 @@
 #   guard.sh CMD [ARGS...]
 #
 # Runs CMD under one machine-wide lock, and only with >= 40 % free memory and
-# load <= 20, measured once the lock is ours. Exit 75 means "try later": the
-# lock stayed busy, resources are low, or they could not be measured.
-# Otherwise the exit code is CMD's own.
+# load <= 20 (integer part of the 1-minute average), measured once the lock is
+# ours. Exit 75 means "try later": the lock stayed busy, resources are low, or
+# they could not be measured. Otherwise the exit code is CMD's own, except when
+# CMD is killed by a signal or lockf itself fails (see lockf(1)).
 #
 #   HEAVY_LOCK       lock file (default /tmp/heavy.lock)
 #   HEAVY_LOCK_WAIT  seconds to wait for the lock (default 600)

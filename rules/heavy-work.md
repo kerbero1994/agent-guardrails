@@ -13,7 +13,7 @@ Rows 2 and 3 of the table. The code half is [`heavy-lock/guard.sh`](../heavy-loc
 - Measure in a separate step before deciding to start, not in the same command that runs the job: a measurement that cannot stop the job is not a check.
 - Exit 75 means "try later". Don't retry in a loop; report the numbers.
 
-**Enforced by.** Partly code. `guard.sh` measures and refuses, but only for commands that go through it. Wrapping the command is the rule.
+**Enforced by.** Partly code. `guard.sh` measures and refuses, but only for commands that go through it. Wrapping the command is the rule. It reads load as the integer part of the 1-minute average.
 
 ## No lock inside a lock
 
@@ -26,4 +26,4 @@ Rows 2 and 3 of the table. The code half is [`heavy-lock/guard.sh`](../heavy-loc
 - A repo script that takes the lock on its own (calling `lockf` directly) must check `HEAVY_LOCK_HELD` first.
 - Always give the lock a timeout (`lockf -t`). A lock without one hangs instead of failing.
 
-**Enforced by.** Partly code. Through `guard.sh` the nesting is handled. A nested step that takes the lock by itself, without the flag check, still deadlocks; it now fails after `HEAVY_LOCK_WAIT` seconds instead of hanging.
+**Enforced by.** Partly code. Through `guard.sh` the nesting is handled, but any value of `HEAVY_LOCK_HELD` left in the environment also skips the lock (the guard still measures). A nested step that takes the lock by itself, without the flag check, still deadlocks; it now fails after `HEAVY_LOCK_WAIT` seconds instead of hanging.

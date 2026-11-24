@@ -10,11 +10,11 @@ This repo answers one question: **which of those rules does code enforce, and wh
 |---|---|---|---|---|
 | 1 | One worktree per agent | rule only | [rules/worktrees.md](rules/worktrees.md) | Nothing stops an agent from writing to the shared checkout. |
 | 2 | Measure memory before heavy work | partly code | [heavy-lock/guard.sh](heavy-lock/guard.sh) (v2), [rules/heavy-work.md](rules/heavy-work.md) | Only commands wrapped in `guard.sh` are measured. Wrapping them is the rule. |
-| 3 | No lock inside a lock | partly code | [heavy-lock/guard.sh](heavy-lock/guard.sh) (v2), [rules/heavy-work.md](rules/heavy-work.md) | A nested step that takes the lock on its own, without checking the flag. |
+| 3 | No lock inside a lock | partly code | [heavy-lock/guard.sh](heavy-lock/guard.sh) (v2), [rules/heavy-work.md](rules/heavy-work.md) | A nested step that takes the lock on its own, without checking the flag. And any value of `HEAVY_LOCK_HELD` left in the environment skips the lock (the guard still measures). |
 | 4 | Real installs in worktrees | rule only | [rules/worktrees.md](rules/worktrees.md) | All of it. |
 | 5 | A review's GO has a scope | rule only | [rules/reviews.md](rules/reviews.md) | All of it. |
 | 6 | A fix needs a test that catches the bug | rule only | [rules/fixes.md](rules/fixes.md) | All of it. |
-| 7 | Never cite a ticket you haven't checked | partly code | [hooks/validate-branch.sh](hooks/validate-branch.sh), [rules/tickets.md](rules/tickets.md) | Branch names are checked against a Jira snapshot. Keys in commits and code comments are not. |
+| 7 | Never cite a ticket you haven't checked | partly code | [hooks/validate-branch.sh](hooks/validate-branch.sh), [rules/tickets.md](rules/tickets.md) | Branch names are checked against a Jira snapshot. Keys in commits and code comments are not. Known ways past the branch check: a flag joined to the name (`git checkout -bname`), git run inside `bash -c "…"`, and no snapshot file (the key check is then off). |
 
 It's not a package. Read it, copy what helps, adapt it.
 
@@ -37,7 +37,7 @@ Every barrier in the table was checked by breaking it and watching a test fail (
 
 ## What ran as-is, and what is v2
 
-**`hooks/` ran as-is.** These are copies of the hooks in my Claude Code setup. The only differences are the lines marked `# SANITIZED:` (`grep -rn SANITIZED hooks/`), so the gap between this and what ran is auditable. The hook messages are in Spanish, the language I work in. `validate-branch.sh` only acts in repos that carry a `.sitimm-devflow` marker file; rename it freely.
+**`hooks/` ran as-is.** These are copies of the hooks in my Claude Code setup. The only differences are the lines marked `# SANITIZED:` (`grep -rn SANITIZED hooks/`), so the gap between this and what ran is auditable. One exception: `test-settings-wired.sh` was adapted to check `settings.example.json` instead of my live settings, so its asserts were rewritten; its header says so. The hook messages are in Spanish, the language I work in. `validate-branch.sh` only acts in repos that carry a `.sitimm-devflow` marker file; rename it freely.
 
 **`heavy-lock/guard.sh` is v2, after the incidents.** The version that ran had three known defects. Only the fixed one is published, and each fix has a test that fails against the old one:
 
@@ -47,7 +47,7 @@ Every barrier in the table was checked by breaking it and watching a test fail (
 | Nested steps relied on a person setting `HEAVY_LOCK_HELD=1`. | `guard.sh` sets it for everything it runs, and skips the lock when it's already set. | `child sees the flag`, `nested guard without the flag waits on its own lock` |
 | When memory or load couldn't be read, the shell printed `integer expression expected` and the command ran anyway. | It refuses with exit 75. | `unreadable memory blocks`, `unreadable load blocks` |
 
-Usage: `heavy-lock/guard.sh <command> [args...]`. Exit 75 means "try later". `HEAVY_LOCK` sets the lock file (default `/tmp/heavy.lock`) and `HEAVY_LOCK_WAIT` the seconds to wait (default 600).
+Usage: `heavy-lock/guard.sh <command> [args...]`. Exit 75 means "try later". Load is the integer part of the 1-minute average, so 20.9 still runs. `HEAVY_LOCK` sets the lock file (default `/tmp/heavy.lock`) and `HEAVY_LOCK_WAIT` the seconds to wait (default 600).
 
 ## The Jira snapshot
 
@@ -67,7 +67,7 @@ Copy `hooks/*.sh` to `~/.claude/hooks/` and merge [hooks/settings.example.json](
 
 ## Also in my setup
 
-[hooks/lint-after-edit.sh](hooks/lint-after-edit.sh) runs a fast, file-scoped check right after the agent edits a file: `py_compile` and `ruff --select F` for Python, the repo's own `eslint --quiet` for JS and TS. Undefined names and broken imports block before the agent can say "it works". It doesn't back any of the 7 rows, so it's not in the table.
+[hooks/lint-after-edit.sh](hooks/lint-after-edit.sh) runs a fast, file-scoped check right after the agent edits a file: `py_compile` and `ruff --select F` for Python, the repo's own `eslint --quiet` for JS and TS. When the repo has ruff or eslint, undefined names and broken imports block before the agent can say "it works". Without them, only Python syntax is checked. It doesn't back any of the 7 rows, so it's not in the table.
 
 ## License
 
